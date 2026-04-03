@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NexusEdu</title>
+    <meta name="description" content="NexusEdu - Bangladesh's best HSC Physics, Chemistry & Higher Math video classes. Cycle-based courses, MCQ tests, and live classes.">
+    <meta name="keywords" content="HSC Physics, Chemistry, Higher Math, Bangladesh, online class, cycle course">
+    <meta name="author" content="NexusEdu">
+
+    <!-- Open Graph tags -->
+    <meta property="og:title" content="NexusEdu - HSC Classes">
+    <meta property="og:description" content="NexusEdu - Bangladesh's best HSC Physics, Chemistry & Higher Math video classes. Cycle-based courses, MCQ tests, and live classes.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://your-app-url.com">
+    <meta property="og:image" content="/icon-512.png">
+
+    <!-- Twitter card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="NexusEdu">
+
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1A237E" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="NexusEdu" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Hind+Siliguri:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(registration => {
+            console.log('SW registered: ', registration);
+          }).catch(registrationError => {
+            console.log('SW registration failed: ', registrationError);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
