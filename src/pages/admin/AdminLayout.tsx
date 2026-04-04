@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { LayoutDashboard, Database, Users, Activity, ShieldAlert, Settings, ArrowLeft, LogOut } from 'lucide-react';
+import { LayoutDashboard, Database, Users, Activity, ShieldAlert, Settings, ArrowLeft, LogOut, KeyRound } from 'lucide-react';
 
 export const AdminLayout: React.FC = () => {
   const { profile, isLoading, signOut } = useAuth();
@@ -31,6 +31,7 @@ export const AdminLayout: React.FC = () => {
     { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
     { to: '/admin/content', icon: Database, label: 'Content Management' },
     { to: '/admin/users', icon: Users, label: 'User Management' },
+    { to: '/admin/enrollment', icon: KeyRound, label: 'Enrollment Codes' },
     { to: '/admin/logs', icon: Activity, label: 'Activity Logs' },
     { to: '/admin/system', icon: Settings, label: 'System Controls' },
   ];

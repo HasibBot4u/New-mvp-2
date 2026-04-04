@@ -9,6 +9,7 @@ import { VideoPlayer } from '../components/shared/VideoPlayer';
 import { useVideoProgress } from '../hooks/useVideoProgress';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
 import { Skeleton } from '../components/ui/Skeleton';
+import { SEO } from '../components/SEO';
 
 export function PlayerPage() {
   const { videoId } = useParams<{ videoId: string }>();
@@ -183,6 +184,10 @@ export function PlayerPage() {
 
   return (
     <div className={`min-h-screen bg-gray-50 pb-20 transition-opacity duration-200 ${visible ? 'opacity-100' : 'opacity-0'}`}>
+      <SEO 
+        title={`${video.title} - ${chapter.name} | NexusEdu`}
+        description={`Watch ${video.title} from ${chapter.name} in ${subject.name}.`}
+      />
       {/* Topbar */}
       <header className="bg-primary text-white h-16 flex items-center px-4 sticky top-0 z-30 shadow-md">
         <button 

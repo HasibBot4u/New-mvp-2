@@ -12,6 +12,9 @@
 }
 
 @layer utilities {
+  .bangla {
+    font-family: 'Hind Siliguri', 'Inter', sans-serif;
+  }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }

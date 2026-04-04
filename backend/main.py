@@ -4,6 +4,34 @@ import time
 import os
 from contextlib import asynccontextmanager
 from typing import Optional, Tuple
+from collections import OrderedDict
+
+class LRUCache:
+    """Simple LRU cache with max size to prevent memory leaks."""
+    def __init__(self, max_size: int = 500):
+        self.cache: OrderedDict = OrderedDict()
+        self.max_size = max_size
+    
+    def get(self, key):
+        if key not in self.cache:
+            return None
+        # Move to end (most recently used)
+        self.cache.move_to_end(key)
+        return self.cache[key]
+    
+    def set(self, key, value):
+        if key in self.cache:
+            self.cache.move_to_end(key)
+        self.cache[key] = value
+        if len(self.cache) > self.max_size:
+            # Remove oldest (leftmost)
+            self.cache.popitem(last=False)
+    
+    def __contains__(self, key):
+        return key in self.cache
+    
+    def __len__(self):
+        return len(self.cache)
 
 import httpx
 import uvicorn
@@ -13,8 +41,18 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from pyrogram import Client
 
 # ─── CONFIG ───────────────────────────────────────────────────
-API_ID          = int(os.environ.get("TELEGRAM_API_ID", "38432903"))
-API_HASH        = os.environ.get("TELEGRAM_API_HASH", "c4d395153850472118de00e8c84aed54")
+_api_id_str = os.environ.get("TELEGRAM_API_ID")
+_api_hash = os.environ.get("TELEGRAM_API_HASH")
+
+if not _api_id_str or not _api_hash:
+    print("WARNING: TELEGRAM_API_ID and TELEGRAM_API_HASH env vars not set")
+    print("Backend will run but Telegram streaming will not work")
+    API_ID = 0
+    API_HASH = ""
+else:
+    API_ID = int(_api_id_str)
+    API_HASH = _api_hash
+
 SESSION_STRING  = os.environ.get("PYROGRAM_SESSION_STRING", "")
 SUPABASE_URL    = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY    = os.environ.get("SUPABASE_SERVICE_KEY", "")
@@ -29,7 +67,7 @@ INITIAL_BUFFER  = 512 * 1024         # 512 KB first response — starts playing 
 tg: Optional[Client] = None
 catalog_cache   = {"data": None, "timestamp": 0}
 video_map       = {}          # uuid → {channel_id, message_id}
-message_cache   = {}          # "channelid_msgid" → message object
+message_cache   = LRUCache(max_size=500)
 resolved_channels = set()
 
 # ─── CORS (explicitly added to every StreamingResponse) ───────
@@ -74,8 +112,8 @@ async def get_message(channel_id: int, message_id: int):
     key = f"{channel_id}_{message_id}"
     if key not in message_cache:
         msg = await tg.get_messages(channel_id, message_id)
-        message_cache[key] = msg
-    return message_cache[key]
+        message_cache.set(key, msg)
+    return message_cache.get(key)
 
 
 async def get_file_info(channel_id: int, message_id: int) -> Tuple[int, str]:
@@ -120,7 +158,7 @@ async def _prewarm_all(video_items: list):
             await resolve_channel(cid)
             msg = await tg.get_messages(cid, message_id)
             if msg and not msg.empty:
-                message_cache[key] = msg
+                message_cache.set(key, msg)
                 fetched += 1
         except Exception:
             pass
@@ -278,13 +316,22 @@ async def ensure_telegram_connected():
         return False
 
 async def telegram_watchdog():
-    """
-    Runs in background every 60 seconds.
-    Reconnects Telegram if it drops.
-    """
+    """Monitors Telegram connection and reconnects with backoff."""
+    consecutive_failures = 0
+    
     while True:
-        await asyncio.sleep(60)
-        await ensure_telegram_connected()
+        try:
+            await ensure_telegram_connected()
+            consecutive_failures = 0  # reset on success
+            await asyncio.sleep(60)
+        except Exception as e:
+            consecutive_failures += 1
+            # Exponential backoff: 1min, 2min, 4min, 8min, max 15min
+            wait_seconds = min(60 * (2 ** (consecutive_failures - 1)), 900)
+            print(f"Telegram watchdog: connection failed "
+                  f"(attempt {consecutive_failures}). "
+                  f"Retrying in {wait_seconds}s. Error: {e}")
+            await asyncio.sleep(wait_seconds)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -374,20 +421,26 @@ async def root():
     return {"service": "NexusEdu Backend", "status": "running"}
 
 
-@app.api_route("/api/health", methods=["GET", "HEAD"])
-async def health():
-    await ensure_telegram_connected()
-    connected = tg is not None and tg.is_connected
+@app.get("/api/health")
+async def health_check():
+    global tg, message_cache
+    
+    telegram_status = "disconnected"
+    if tg is not None:
+        try:
+            # Quick check — if tg object exists and is connected
+            telegram_status = "connected" if tg.is_connected else "disconnected"
+        except Exception:
+            telegram_status = "unknown"
+    
     return {
-        "status":              "ok" if connected else "degraded",
-        "telegram":            "connected" if connected else "reconnecting",
-        "videos_cached":       len(video_map),
-        "messages_cached":     len(message_cache),
-        "channels_resolved":   len(resolved_channels),
-        "catalog_age_seconds": (
-            round(time.time() - catalog_cache["timestamp"])
-            if catalog_cache["timestamp"] else None
-        ),
+        "status": "ok",
+        "telegram": telegram_status,
+        "telegram_connected": telegram_status == "connected",
+        "catalog_size": len(message_cache),
+        "videos_loaded": len(message_cache),
+        "uptime": "running",
+        "timestamp": int(asyncio.get_event_loop().time()),
     }
 
 
@@ -490,7 +543,7 @@ async def prefetch_video(video_id: str):
         await resolve_channel(cid)
         msg = await tg.get_messages(cid, message_id)
         if msg and not msg.empty:
-            message_cache[key] = msg
+            message_cache.set(key, msg)
             media = msg.video or msg.document
             size_mb = round(media.file_size / 1024 / 1024, 1) if media else 0
             return {"status": "cached", "cached": True, "size_mb": size_mb}
@@ -513,11 +566,14 @@ async def stream_video(video_id: str, request: Request):
             "The server is reconnecting. Please retry in 30 seconds.")
 
     info       = video_map[video_id]
-    channel_id = int(info["channel_id"])
-    message_id = int(info["message_id"])
+    channel_id_str = info.get("channel_id", "")
+    message_id_str = info.get("message_id", 0)
 
-    if not channel_id or not message_id:
+    if not channel_id_str or not message_id_str:
         raise HTTPException(400, "Video not linked to Telegram — set message_id in admin panel")
+
+    channel_id = int(channel_id_str)
+    message_id = int(message_id_str)
 
     await resolve_channel(channel_id)
 
@@ -526,6 +582,7 @@ async def stream_video(video_id: str, request: Request):
         if not total:
             raise HTTPException(500, "Could not read file size from Telegram")
 
+        print(f"Streaming video {video_id}, media_type: video/mp4")
         range_header = request.headers.get("range")
 
         if range_header:
@@ -535,12 +592,13 @@ async def stream_video(video_id: str, request: Request):
             return StreamingResponse(
                 _stream_telegram(channel_id, message_id, start, end, total),
                 status_code=206,
+                media_type="video/mp4",
                 headers={
                     **CORS_HEADERS,
                     "Content-Range":  f"bytes {start}-{end}/{total}",
                     "Accept-Ranges":  "bytes",
                     "Content-Length": str(length),
-                    "Content-Type":   mime_type,
+                    "Content-Type":   "video/mp4",
                 },
             )
         else:
@@ -553,12 +611,13 @@ async def stream_video(video_id: str, request: Request):
             return StreamingResponse(
                 _stream_telegram(channel_id, message_id, 0, initial_end, total),
                 status_code=206,
+                media_type="video/mp4",
                 headers={
                     **CORS_HEADERS,
                     "Content-Range":  f"bytes 0-{initial_end}/{total}",
                     "Accept-Ranges":  "bytes",
                     "Content-Length": str(length),
-                    "Content-Type":   mime_type,
+                    "Content-Type":   "video/mp4",
                 },
             )
 
@@ -585,12 +644,13 @@ async def test_stream(request: Request):
             return StreamingResponse(
                 _stream_telegram(TEST_CHANNEL_ID, TEST_MESSAGE_ID, start, end, total),
                 status_code=206,
+                media_type="video/mp4",
                 headers={
                     **CORS_HEADERS,
                     "Content-Range":  f"bytes {start}-{end}/{total}",
                     "Accept-Ranges":  "bytes",
                     "Content-Length": str(length),
-                    "Content-Type":   mime_type,
+                    "Content-Type":   "video/mp4",
                 },
             )
         else:
@@ -598,12 +658,13 @@ async def test_stream(request: Request):
             return StreamingResponse(
                 _stream_telegram(TEST_CHANNEL_ID, TEST_MESSAGE_ID, 0, initial_end, total),
                 status_code=206,
+                media_type="video/mp4",
                 headers={
                     **CORS_HEADERS,
                     "Content-Range":  f"bytes 0-{initial_end}/{total}",
                     "Accept-Ranges":  "bytes",
                     "Content-Length": str(str(initial_end + 1)),
-                    "Content-Type":   mime_type,
+                    "Content-Type":   "video/mp4",
                 },
             )
     except HTTPException:

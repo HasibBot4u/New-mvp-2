@@ -46,7 +46,7 @@ export const AdminDashboard: React.FC = () => {
   const [analyticsData, setAnalyticsData] = useState({
     dau: [] as any[],
     topVideos: [] as any[],
-    chapterCompletion: [] as any[]
+    topPages: [] as any[]
   });
 
   useEffect(() => {
@@ -103,69 +103,58 @@ export const AdminDashboard: React.FC = () => {
         .limit(5);
       if (activity) setRecentActivity(activity);
 
-      // Analytics Data
-      const { data: watchHistory } = await supabase
-        .from('watch_history')
-        .select('user_id, video_id, progress_percent, watch_count, last_watched_at, videos(title, chapter_id, chapters(name))');
+      // Analytics Data from page_views
+      const { data: pageViews } = await supabase
+        .from('page_views')
+        .select('page, created_at, video_id, videos(title)');
 
-      if (watchHistory) {
-        // DAU (last 7 days)
-        const dauMap = new Map<string, Set<string>>();
+      if (pageViews) {
+        // DAU (last 7 days) based on page views
+        const dauMap = new Map<string, number>();
         const now = new Date();
         for (let i = 6; i >= 0; i--) {
           const d = new Date(now);
           d.setDate(d.getDate() - i);
-          dauMap.set(d.toISOString().split('T')[0], new Set());
+          dauMap.set(d.toISOString().split('T')[0], 0);
         }
 
+        const topPagesMap = new Map<string, number>();
         const topVideosMap = new Map<string, { title: string, views: number }>();
-        const chapterMap = new Map<string, { name: string, totalProgress: number, count: number }>();
 
-        watchHistory.forEach(record => {
-          // DAU
-          const dateStr = new Date(record.last_watched_at).toISOString().split('T')[0];
+        pageViews.forEach(record => {
+          // Views per day
+          const dateStr = new Date(record.created_at).toISOString().split('T')[0];
           if (dauMap.has(dateStr)) {
-            dauMap.get(dateStr)?.add(record.user_id);
+            dauMap.set(dateStr, (dauMap.get(dateStr) || 0) + 1);
           }
 
-          // Top Videos
-          const videosData = record.videos as any;
-          const videoTitle = videosData?.title || 'Unknown Video';
-          const currentViews = topVideosMap.get(record.video_id)?.views || 0;
-          topVideosMap.set(record.video_id, { title: videoTitle, views: currentViews + (record.watch_count || 1) });
+          // Top Pages
+          topPagesMap.set(record.page, (topPagesMap.get(record.page) || 0) + 1);
 
-          // Chapter Completion
-          const chapterId = videosData?.chapter_id;
-          const chaptersData = videosData?.chapters as any;
-          const chapterName = chaptersData?.name || 'Unknown Chapter';
-          if (chapterId) {
-            const current = chapterMap.get(chapterId) || { name: chapterName, totalProgress: 0, count: 0 };
-            chapterMap.set(chapterId, {
-              name: chapterName,
-              totalProgress: current.totalProgress + (record.progress_percent || 0),
-              count: current.count + 1
-            });
+          // Top Videos
+          if (record.video_id) {
+            const videosData = record.videos as any;
+            const videoTitle = videosData?.title || 'Unknown Video';
+            const currentViews = topVideosMap.get(record.video_id)?.views || 0;
+            topVideosMap.set(record.video_id, { title: videoTitle, views: currentViews + 1 });
           }
         });
 
-        const dau = Array.from(dauMap.entries()).map(([date, users]) => ({
+        const dau = Array.from(dauMap.entries()).map(([date, views]) => ({
           date: date.substring(5), // MM-DD
-          users: users.size
+          views
         }));
+
+        const topPages = Array.from(topPagesMap.entries())
+          .map(([page, views]) => ({ page, views }))
+          .sort((a, b) => b.views - a.views)
+          .slice(0, 10);
 
         const topVideos = Array.from(topVideosMap.values())
           .sort((a, b) => b.views - a.views)
           .slice(0, 10);
 
-        const chapterCompletion = Array.from(chapterMap.values())
-          .map(c => ({
-            name: c.name.length > 20 ? c.name.substring(0, 20) + '...' : c.name,
-            rate: Math.round(c.totalProgress / c.count)
-          }))
-          .sort((a, b) => b.rate - a.rate)
-          .slice(0, 10);
-
-        setAnalyticsData({ dau, topVideos, chapterCompletion });
+        setAnalyticsData({ dau, topPages, topVideos });
       }
 
     } catch (error) {
@@ -188,7 +177,7 @@ export const AdminDashboard: React.FC = () => {
         }
       }
     } catch (error) {
-      console.error('Health check failed:', error);
+      console.warn('Health check failed:', error);
     } finally {
       setIsHealthLoading(false);
     }
@@ -533,19 +522,19 @@ export const AdminDashboard: React.FC = () => {
             </ResponsiveContainer>
           </div>
 
-          {/* Chapter Completion Chart */}
+          {/* Top Pages Chart */}
           <div className="h-64 lg:col-span-2">
-            <h3 className="text-sm font-medium text-text-secondary mb-4">Average Completion Rate by Chapter (%)</h3>
+            <h3 className="text-sm font-medium text-text-secondary mb-4">Most Visited Pages (Top 10)</h3>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={analyticsData.chapterCompletion} layout="vertical" margin={{ left: 100 }}>
+              <BarChart data={analyticsData.topPages} layout="vertical" margin={{ left: 100 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
-                <XAxis type="number" domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
-                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} width={100} />
+                <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
+                <YAxis dataKey="page" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} width={100} />
                 <Tooltip 
                   cursor={{ fill: '#f3f4f6' }}
                   contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />
-                <Bar dataKey="rate" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} />
+                <Bar dataKey="views" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </div>

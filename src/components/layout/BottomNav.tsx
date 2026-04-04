@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 export function BottomNav() {
   const location = useLocation();
   const path = location.pathname;
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const [unansweredCount, setUnansweredCount] = useState(0);
 
   useEffect(() => {
@@ -45,8 +45,8 @@ export function BottomNav() {
     }
   }, [profile]);
 
-  // Hide BottomNav on login, admin, and watch pages
-  if (path === '/login' || path.startsWith('/admin') || path.startsWith('/watch') || path.startsWith('/quiz/')) {
+  // Hide BottomNav on login, admin, and watch pages, or if not logged in
+  if (!user || path === '/login' || path.startsWith('/admin') || path.startsWith('/watch') || path.startsWith('/quiz/')) {
     return null;
   }
 
