@@ -11,9 +11,10 @@ interface VideoPlayerProps {
   isTheaterMode?: boolean;
   onToggleTheaterMode?: () => void;
   onComplete?: () => void;
+  onTimeUpdate?: (time: number) => void;
 }
 
-export function VideoPlayer({ videoId, sizeMb = 0, isTheaterMode, onToggleTheaterMode, onComplete }: VideoPlayerProps) {
+export function VideoPlayer({ videoId, sizeMb = 0, isTheaterMode, onToggleTheaterMode, onComplete, onTimeUpdate }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
@@ -512,6 +513,7 @@ export function VideoPlayer({ videoId, sizeMb = 0, isTheaterMode, onToggleTheate
     if (!videoRef.current) return;
     const time = videoRef.current.currentTime;
     setCurrentTime(time);
+    if (onTimeUpdate) onTimeUpdate(time);
 
     // Update buffered amount
     if (videoRef.current.buffered.length > 0) {

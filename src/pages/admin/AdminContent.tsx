@@ -12,7 +12,7 @@ import { AdminQuizQuestions } from '../../components/admin/AdminQuizQuestions';
 export const AdminContent: React.FC = () => {
   const { catalog, isLoading, refreshCatalog } = useCatalog();
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'subjects' | 'cycles' | 'chapters' | 'videos' | 'quizzes' | 'live_classes' | 'qna'>('subjects');
+  const [activeTab, setActiveTab] = useState<'subjects' | 'cycles' | 'chapters' | 'videos' | 'quizzes' | 'live_classes' | 'qna' | 'announcements'>('subjects');
   const [searchQuery, setSearchQuery] = useState('');
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -28,6 +28,10 @@ export const AdminContent: React.FC = () => {
   const [liveClasses, setLiveClasses] = useState<any[]>([]);
   const [isLoadingLiveClasses, setIsLoadingLiveClasses] = useState(false);
 
+  // Announcements State
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(false);
+
   // QnA State
   const [unansweredQuestions, setUnansweredQuestions] = useState<any[]>([]);
   const [isLoadingQnA, setIsLoadingQnA] = useState(false);
@@ -36,7 +40,22 @@ export const AdminContent: React.FC = () => {
     fetchQuizzes();
     fetchLiveClasses();
     fetchUnansweredQuestions();
+    fetchAnnouncements();
   }, []);
+
+  const fetchAnnouncements = async () => {
+    setIsLoadingAnnouncements(true);
+    try {
+      const { data, error } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      setAnnouncements(data || []);
+    } catch (err) {
+      console.error('Error fetching announcements:', err);
+      setAnnouncements([]);
+    } finally {
+      setIsLoadingAnnouncements(false);
+    }
+  };
 
   const fetchUnansweredQuestions = async () => {
     setIsLoadingQnA(true);
@@ -158,6 +177,11 @@ export const AdminContent: React.FC = () => {
     c.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const filteredAnnouncements = announcements.filter(a => 
+    a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    a.content.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   const tabs = [
     { id: 'subjects', label: 'Subjects', count: filteredSubjects.length },
     { id: 'cycles', label: 'Cycles', count: filteredCycles.length },
@@ -165,6 +189,7 @@ export const AdminContent: React.FC = () => {
     { id: 'videos', label: 'Videos', count: filteredVideos.length },
     { id: 'quizzes', label: 'Quizzes', count: filteredQuizzes.length },
     { id: 'live_classes', label: 'Live Classes', count: filteredLiveClasses.length },
+    { id: 'announcements', label: 'Announcements', count: filteredAnnouncements.length },
     { id: 'qna', label: 'Q&A', count: unansweredQuestions.length },
   ];
 
@@ -216,6 +241,8 @@ export const AdminContent: React.FC = () => {
         await fetchQuizzes();
       } else if (activeTab === 'live_classes') {
         await fetchLiveClasses();
+      } else if (activeTab === 'announcements') {
+        await fetchAnnouncements();
       } else {
         await refreshCatalog();
       }
@@ -239,6 +266,8 @@ export const AdminContent: React.FC = () => {
         await fetchQuizzes();
       } else if (table === 'live_classes') {
         await fetchLiveClasses();
+      } else if (table === 'announcements') {
+        await fetchAnnouncements();
       } else {
         await refreshCatalog();
       }
@@ -246,6 +275,18 @@ export const AdminContent: React.FC = () => {
     } catch (error) {
       console.error(`Error deleting from ${table}:`, error);
       showToast(`Failed to delete ${table.slice(0, -1)}`);
+    }
+  };
+
+  const toggleAnnouncementActive = async (id: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase.from('announcements').update({ is_active: !currentStatus }).eq('id', id);
+      if (error) throw error;
+      await fetchAnnouncements();
+      showToast(`Announcement ${!currentStatus ? 'activated' : 'deactivated'}`);
+    } catch (error) {
+      console.error('Error toggling announcement status:', error);
+      showToast('Failed to update announcement status');
     }
   };
 
@@ -293,6 +334,88 @@ export const AdminContent: React.FC = () => {
       }
     } catch (error: any) {
       setStreamTestResult({ status: 'error', message: `Network error: ${error.message}` });
+    }
+  };
+
+  const handleBulkImport = async () => {
+    if (!importJson.trim()) {
+      showToast('Please enter CSV or JSON data');
+      return;
+    }
+
+    try {
+      let data: any[] = [];
+      const input = importJson.trim();
+      
+      // Check if it's JSON
+      if (input.startsWith('[') && input.endsWith(']')) {
+        data = JSON.parse(input);
+      } else {
+        // Parse CSV
+        const lines = input.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim());
+        
+        for (let i = 1; i < lines.length; i++) {
+          if (!lines[i].trim()) continue;
+          const values = lines[i].split(',').map(v => v.trim());
+          const item: any = {};
+          headers.forEach((header, index) => {
+            let val: any = values[index];
+            if (val === 'true') val = true;
+            if (val === 'false') val = false;
+            if (!isNaN(Number(val)) && val !== '') val = Number(val);
+            item[header] = val;
+          });
+          data.push(item);
+        }
+      }
+
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new Error('Data must be a valid JSON array or CSV format');
+      }
+
+      setIsImporting(true);
+      setImportProgress('0 / 0');
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (let i = 0; i < data.length; i++) {
+        const item = data[i];
+        try {
+          // Basic validation
+          if (!item.title || !item.chapter_id || !item.telegram_message_id) {
+            throw new Error(`Missing required fields in item ${i}`);
+          }
+
+          const chapter = allChapters.find(c => c.id === item.chapter_id);
+          const cycle = allCycles.find(c => c.id === chapter?.cycle_id);
+          
+          const videoData = {
+            ...item,
+            telegram_channel_id: cycle?.telegram_channel_id || item.telegram_channel_id
+          };
+
+          const { error } = await supabase.from('videos').insert(videoData);
+          if (error) throw error;
+          
+          successCount++;
+        } catch (err) {
+          console.error(`Error importing item ${i}:`, err);
+          errorCount++;
+        }
+        setImportProgress(`${i + 1} / ${data.length}`);
+      }
+
+      showToast(`Import complete: ${successCount} added, ${errorCount} failed`);
+      if (successCount > 0) {
+        await refreshCatalog();
+        setIsImportModalOpen(false);
+        setImportJson('');
+      }
+    } catch (err: any) {
+      showToast(`Invalid format: ${err.message}`);
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -557,6 +680,63 @@ export const AdminContent: React.FC = () => {
             </table>
           </div>
         );
+      case 'announcements':
+        return (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-text-secondary whitespace-nowrap">
+              <thead className="bg-surface text-xs uppercase text-text-primary border-b border-border">
+                <tr>
+                  <th className="px-6 py-3">Title</th>
+                  <th className="px-6 py-3">Content</th>
+                  <th className="px-6 py-3">Type</th>
+                  <th className="px-6 py-3">Active</th>
+                  <th className="px-6 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoadingAnnouncements ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center">Loading announcements...</td>
+                  </tr>
+                ) : filteredAnnouncements.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center">No announcements found</td>
+                  </tr>
+                ) : (
+                  filteredAnnouncements.map((announcement) => (
+                    <tr key={announcement.id} className="border-b border-border hover:bg-surface/50">
+                      <td className="px-6 py-4 font-medium text-text-primary truncate max-w-[200px]" title={announcement.title}>{announcement.title}</td>
+                      <td className="px-6 py-4 truncate max-w-[300px]" title={announcement.content}>{announcement.content}</td>
+                      <td className="px-6 py-4">
+                        <Badge variant="outline" className={
+                          announcement.type === 'warning' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                          announcement.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' :
+                          'bg-blue-50 text-blue-700 border-blue-200'
+                        }>
+                          {announcement.type}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => toggleAnnouncementActive(announcement.id, announcement.is_active)}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${announcement.is_active ? 'bg-green-500' : 'bg-gray-600'}`}
+                        >
+                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${announcement.is_active ? 'translate-x-5' : 'translate-x-1'}`} />
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleEdit(announcement)}><Edit2 size={14} /></Button>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-500 hover:text-red-600" onClick={() => handleDelete('announcements', announcement.id)}><Trash2 size={14} /></Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        );
       default:
         return <div className="p-8 text-center text-text-secondary">Select a tab to view content</div>;
     }
@@ -570,6 +750,12 @@ export const AdminContent: React.FC = () => {
           <p className="text-text-secondary text-sm">Manage subjects, cycles, chapters, and videos</p>
         </div>
         <div className="flex items-center gap-2">
+          {activeTab === 'videos' && (
+            <Button variant="outline" className="flex items-center gap-2" onClick={() => setIsImportModalOpen(true)}>
+              <Upload size={16} />
+              Bulk Import
+            </Button>
+          )}
           <Button className="flex items-center gap-2" onClick={handleAdd}>
             <Plus size={16} />
             Add New {activeTab.slice(0, -1)}
@@ -998,6 +1184,56 @@ export const AdminContent: React.FC = () => {
             </>
           )}
 
+          {activeTab === 'announcements' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">Title</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.title || ''}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">Content</label>
+                <textarea
+                  required
+                  value={formData.content || ''}
+                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  rows={4}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">Type</label>
+                <select
+                  required
+                  value={formData.type || 'info'}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="info">Info</option>
+                  <option value="warning">Warning</option>
+                  <option value="success">Success</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2 mt-4">
+                <input
+                  type="checkbox"
+                  id="is_active"
+                  checked={formData.is_active !== false}
+                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                  className="rounded border-border text-primary focus:ring-primary"
+                />
+                <label htmlFor="is_active" className="text-sm font-medium text-text-primary">
+                  Active (visible to users)
+                </label>
+              </div>
+            </>
+          )}
+
           <div className="flex justify-end gap-3 pt-4 border-t border-border mt-6">
             <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
               Cancel
@@ -1277,6 +1513,51 @@ export const AdminContent: React.FC = () => {
           )}
         </div>
       )}
+
+      <Modal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        title="Bulk Import Videos"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Paste a JSON array or CSV data of video objects. Required fields: <code className="bg-surface px-1 rounded">title</code>, <code className="bg-surface px-1 rounded">chapter_id</code>, <code className="bg-surface px-1 rounded">telegram_message_id</code>.
+          </p>
+          <textarea
+            value={importJson}
+            onChange={(e) => setImportJson(e.target.value)}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            rows={10}
+            placeholder='JSON Example:
+[
+  {
+    "title": "Video 1",
+    "chapter_id": "uuid-here",
+    "telegram_message_id": 1234,
+    "duration": "10:00",
+    "size_mb": 50.5
+  }
+]
+
+CSV Example:
+title,chapter_id,telegram_message_id,duration,size_mb
+Video 1,uuid-here,1234,10:00,50.5'
+          />
+          <div className="flex justify-between items-center pt-4 border-t border-border mt-6">
+            <div className="text-sm text-text-secondary">
+              {isImporting ? `Importing... ${importProgress}` : ''}
+            </div>
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" onClick={() => setIsImportModalOpen(false)} disabled={isImporting}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleBulkImport} disabled={isImporting || !importJson.trim()}>
+                {isImporting ? 'Importing...' : 'Start Import'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

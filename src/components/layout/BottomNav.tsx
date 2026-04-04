@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, User, BookOpen, Trophy, Radio, MessageCircle } from 'lucide-react';
+import { Home, User, BookOpen, Trophy, Radio, MessageCircle, Bot } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -55,6 +55,7 @@ export function BottomNav() {
     { icon: BookOpen, label: 'Subjects', to: '/subjects' },
     { icon: Radio, label: 'লাইভ', to: '/live' },
     { icon: MessageCircle, label: 'Q&A', to: '/qna' },
+    { icon: Bot, label: 'AI সহায়ক', to: '/assistant' },
     { icon: Trophy, label: 'Leaderboard', to: '/leaderboard' },
     { icon: User, label: 'Profile', to: '/profile' },
   ];

@@ -16,11 +16,13 @@ const VideoListPage = React.lazy(() => import('./pages/VideoListPage').then(m =>
 const PlayerPage = React.lazy(() => import('./pages/PlayerPage').then(m => ({ default: m.PlayerPage })));
 const LoginPage = React.lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
 const ProfilePage = React.lazy(() => import('./pages/ProfilePage').then(m => ({ default: m.ProfilePage })));
+const PlannerPage = React.lazy(() => import('./pages/PlannerPage').then(m => ({ default: m.PlannerPage })));
 const ProgressPage = React.lazy(() => import('./pages/ProgressPage').then(m => ({ default: m.ProgressPage })));
 const NotesPage = React.lazy(() => import('./pages/NotesPage').then(m => ({ default: m.NotesPage })));
 const LiveClassPage = React.lazy(() => import('./pages/LiveClassPage').then(m => ({ default: m.LiveClassPage })));
 const QnAPage = React.lazy(() => import('./pages/QnAPage').then(m => ({ default: m.QnAPage })));
 const QnADetailPage = React.lazy(() => import('./pages/QnADetailPage').then(m => ({ default: m.QnADetailPage })));
+const StudyAssistantPage = React.lazy(() => import('./pages/StudyAssistantPage').then(m => ({ default: m.StudyAssistantPage })));
 const QuizPage = React.lazy(() => import('./pages/QuizPage').then(m => ({ default: m.QuizPage })));
 const QuizListPage = React.lazy(() => import('./pages/QuizListPage').then(m => ({ default: m.QuizListPage })));
 const QuizResultPage = React.lazy(() => import('./pages/QuizResultPage').then(m => ({ default: m.QuizResultPage })));
@@ -145,11 +147,13 @@ const AppContent: React.FC = () => {
             <Route path="/quiz/:quizId/result/:attemptId" element={<ProtectedRoute><QuizResultPage /></ProtectedRoute>} />
             <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+            <Route path="/planner" element={<ProtectedRoute><PlannerPage /></ProtectedRoute>} />
             <Route path="/progress" element={<ProtectedRoute><ProgressPage /></ProtectedRoute>} />
             <Route path="/notes" element={<ProtectedRoute><NotesPage /></ProtectedRoute>} />
             <Route path="/live" element={<ProtectedRoute><LiveClassPage /></ProtectedRoute>} />
             <Route path="/qna" element={<ProtectedRoute><QnAPage /></ProtectedRoute>} />
             <Route path="/qna/:questionId" element={<ProtectedRoute><QnADetailPage /></ProtectedRoute>} />
+            <Route path="/assistant" element={<ProtectedRoute><StudyAssistantPage /></ProtectedRoute>} />
 
             <Route path="/admin" element={
               <ProtectedRoute>

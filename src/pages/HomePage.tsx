@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { PlayCircle, BookOpen, User, ChevronRight, CheckCircle2, MessageCircle, Trophy, Video, Download } from 'lucide-react';
+import { PlayCircle, BookOpen, User, ChevronRight, CheckCircle2, MessageCircle, Trophy, Video, Download, Bell, AlertTriangle } from 'lucide-react';
 import { useCatalog } from '../contexts/CatalogContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useVideoProgress } from '../hooks/useVideoProgress';
 import { Skeleton } from '../components/ui/Skeleton';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../lib/supabase';
 
 export function HomePage() {
   const { catalog, isLoading, error, refreshCatalog } = useCatalog();
@@ -14,6 +15,27 @@ export function HomePage() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchAnnouncements = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('announcements')
+          .select('*')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false });
+        
+        if (data && !error) {
+          setAnnouncements(data);
+        }
+      } catch (e) {
+        console.error('Error fetching announcements:', e);
+      }
+    };
+
+    fetchAnnouncements();
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -230,6 +252,43 @@ export function HomePage() {
 
       <main className="max-w-7xl mx-auto px-4 py-16">
         
+        {/* Announcements Section */}
+        {announcements.length > 0 && (
+          <section className="mb-12">
+            <div className="space-y-4">
+              {announcements.map((announcement) => {
+                let icon = <Bell className="w-5 h-5" />;
+                let bgClass = 'bg-blue-50 border-blue-200';
+                let textClass = 'text-blue-800';
+                let iconClass = 'text-blue-600 bg-blue-100';
+
+                if (announcement.type === 'warning') {
+                  icon = <AlertTriangle className="w-5 h-5" />;
+                  bgClass = 'bg-yellow-50 border-yellow-200';
+                  textClass = 'text-yellow-800';
+                  iconClass = 'text-yellow-600 bg-yellow-100';
+                } else if (announcement.type === 'success') {
+                  icon = <CheckCircle2 className="w-5 h-5" />;
+                  bgClass = 'bg-green-50 border-green-200';
+                  textClass = 'text-green-800';
+                  iconClass = 'text-green-600 bg-green-100';
+                }
+
+                return (
+                  <div key={announcement.id} className={`flex items-start gap-4 p-4 rounded-xl border ${bgClass}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${iconClass}`}>
+                      {icon}
+                    </div>
+                    <div>
+                      <h3 className={`font-bold ${textClass} mb-1 bangla`}>{announcement.title}</h3>
+                      <p className={`text-sm ${textClass} opacity-90 bangla`}>{announcement.content}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
         {/* Continue Watching */}
         {user && continueWatching.length > 0 && (
           <section className="mb-16">
