@@ -1,0 +1,65 @@
+name: Sync to Render Repository
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout THIS (remix) repo
+        uses: actions/checkout@v4
+        with:
+          path: source-repo
+          fetch-depth: 0
+
+      - name: Checkout RENDER (original) repo
+        uses: actions/checkout@v4
+        with:
+          # ← CHANGE THIS to your actual Render repo
+          repository: HasibBot4u/New-mvp
+          token: ${{ secrets.SYNC_TOKEN }}
+          path: render-repo
+          fetch-depth: 0
+
+      - name: Copy all frontend files to Render repo
+        run: |
+          # Copy src folder (all React components)
+          cp -rf source-repo/src/. render-repo/src/
+          
+          # Copy public folder (icons, manifest, etc.)
+          cp -rf source-repo/public/. render-repo/public/
+          
+          # Copy config files (but NOT sensitive backend files)
+          cp source-repo/index.html render-repo/index.html
+          cp source-repo/vite.config.ts render-repo/vite.config.ts
+          cp source-repo/tailwind.config.ts render-repo/tailwind.config.ts
+          cp source-repo/tsconfig.json render-repo/tsconfig.json
+          cp source-repo/package.json render-repo/package.json
+          
+          # Copy backend only if it exists and changed
+          if [ -d "source-repo/backend" ]; then
+            cp -rf source-repo/backend/. render-repo/backend/
+          fi
+          
+          # Copy database files
+          if [ -d "source-repo/database" ]; then
+            cp -rf source-repo/database/. render-repo/database/
+          fi
+
+      - name: Commit and push to Render repo
+        run: |
+          cd render-repo
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add -A
+          
+          # Only commit if there are actual changes
+          if git diff --staged --quiet; then
+            echo "No changes to sync."
+          else
+            git commit -m "🔄 Auto-sync from remix repo [$(date +'%Y-%m-%d %H:%M')]"
+            git push origin main
+          fi
